@@ -1,51 +1,42 @@
-import RPi.GPIO as GPIO
+from grove.grove_ultrasonic_ranger import GroveUltrasonicRanger
 import time
+import socket
 
-# GPIO Mode (BCM or BOARD)
-GPIO.setmode(GPIO.BCM)
+SERVER_PRT = 1234
+ip_address = "127.0.0.1"  # Use the server's IP address
 
-# Set GPIO pins
-TRIG = 23
-ECHO = 24
+client = socket.socket()
+client.connect((ip_address, SERVER_PRT))
 
-# Set GPIO direction (IN / OUT)
-GPIO.setup(TRIG, GPIO.OUT)
-GPIO.setup(ECHO, GPIO.IN)
-GPIO.setup(LED, GPIO.OUT)
-
-def measure_distance():
-    # Send a short pulse to trigger
-    GPIO.output(TRIG, True)
-    time.sleep(0.00001)  # 10µs pulse
-    GPIO.output(TRIG, False)
-
-    # Measure response time
-    start_time = time.time()
-    stop_time = time.time()
-
-    while GPIO.input(ECHO) == 0:
-        start_time = time.time()
-
-    while GPIO.input(ECHO) == 1:
-        stop_time = time.time()
-
-    # Time difference to distance
-    elapsed_time = stop_time - start_time
-    distance = (elapsed_time * 34300) / 2  # cm
-    return distance
+# Initialize the ultrasonic sensor on port D5
+SENSOR_PORT = 5
+ultrasonic_sensor = GroveUltrasonicRanger(SENSOR_PORT)
 
 try:
     while True:
-        dist = measure_distance()
-        print(f"Distance: {dist:.2f} cm")
+    
+        distance = ultrasonic_sensor.get_distance()
+        print(f"Distance: {distance:.2f} cm")
+
+        # Detect objects closer than 30 cm (about 12 inches/1 ft)
+        if distance < 30:
+            print("Object detected in blind spot")
         
-        # Detect objects closer than 30 cm
-        if dist < 30:
-            print("Object detected in blind spot!")
+        # Send the distance data to the server
+        send_time = time.time()  
+        message = f"{distance:.2f}"
+        client.send(message.encode())  
         
-        time.sleep(0.5)
+    
+        response = client.recv(1024).decode()
+        print(f"Server Response: {response}")
+
+        #round-trip time for performance measures
+        rtt = time.time() - send_time
+        print(f"Round-trip time: {rtt:.4f} sec")
+
+        time.sleep(0.8)
 
 except KeyboardInterrupt:
-    print("Cleaning up before exiting.")
-    GPIO.cleanup()
-
+    print("Exiting")
+    client.close()
